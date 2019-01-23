@@ -11,9 +11,21 @@ WEATHER_URL = 'http://api.openweathermap.org'
 WEATHER, HOROSCOPE, ARTICLE, TIME, DONE = range(5)
 global USER_DATA
 
+def merge_dicts(d1, d2):
+    aux = d2.copy()
+    aux.update(d1)
+    return aux
+
+
+
 def user_logger(update, message):
     user = update.message.from_user
-    print(user.last_name + ", " + user.first_name + " (id:" + str(user.id) + ") " + message)
+    line = ""
+    if (user.last_name is not None):
+        line += user.last_name + ", "
+    if (user.first_name is not None):
+        line += user.first_name + " "
+    print(line + "(id:" + str(user.id) + ") " + message)
 
 
 
@@ -77,6 +89,18 @@ def get_article():
 
 
 
+def get_article_list(user):
+    if (user not in USER_DATA or 'user_articles' not in USER_DATA[user] or USER_DATA[user]['user_articles'] == []):
+        return "You have no articles in the list, Master"
+    
+    articles = USER_DATA[user]['user_articles']
+    text = "This is your list of articles:"
+    for i in range(len(articles)):
+        text += "\n" + str(i) + ". " + articles[i]
+    return text
+
+
+
 # User-prompted commands
 def help(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="Here is what I can do for you, Master:\n" + 
@@ -84,6 +108,9 @@ def help(bot, update):
                                                             "- /search <query>: look for something in google.\n" +
                                                             "- /forecast: See the forecast for today (you need to set up a daily update).\n" +
                                                             "- /sign: See your horoscope for today (you need to set up a daily update).\n" +
+                                                            "- /myarticles: See Wikipedia articles you have saved for later.\n" +
+                                                            "- /addarticle: Add a Wikipedia article to the 'read later' list.\n" +
+                                                            "- /removearticle: Remove an article from the 'read later' list.\n" +
                                                             "- /dailyinfostart: Set up a daily information regarding the forecast in your location and your horoscope.\n" +
                                                             "- /dailyinfostop: Stop the daily information service.\n")
 
@@ -129,13 +156,23 @@ def article(bot, update):
 def stop_daily_info(bot, update, job_queue):
     global USER_DATA
     user_logger(update, "has stopped daily info")
+    bot.send_message(chat_id=update.message.chat_id, text="I will stop sending daily updates, Master " + update.message.from_user.first_name)
     jobs = job_queue.jobs()
     for job in jobs:
         if (job.name == str(update.message.from_user.id)):
             job.schedule_removal()
-            USER_DATA.pop(str(update.message.from_user.id))
-            bot.send_message(chat_id=update.message.chat_id, text="I will stop sending daily updates, Master " + update.message.from_user.first_name)
+            if (str(update.message.from_user.id) in USER_DATA and 'user_articles' in USER_DATA[str(update.message.from_user.id)]):
+                USER_DATA[str(update.message.from_user.id)] = {'user_articles': USER_DATA[str(update.message.from_user.id)]['user_articles']}
+            else:
+                USER_DATA.pop(str(update.message.from_user.id))
             return
+
+
+
+def user_articles(bot, update):
+    user_logger(update, "requests list of articles")
+    text = get_article_list(str(update.message.from_user.id))
+    bot.send_message(chat_id=update.message.chat_id, text=text)
 
 
 
@@ -258,15 +295,18 @@ def set_daily_info(bot, update, user_data, job_queue):
     time = datetime.time(user_data['time'][0], user_data['time'][1])
     job_queue.run_daily(daily_info, time, context={'uid': update.message.from_user.id, 'weather': user_data['weather'][2], 'horoscope': user_data['horoscope'], 'article': user_data['article']}, name=update.message.from_user.id)
     user_data['weather'] = user_data['weather'][2]
+    
+    if (str(update.message.from_user.id) in USER_DATA and 'user_articles' in USER_DATA[str(update.message.from_user.id)]):
+        user_data['user_articles'] = USER_DATA[str(update.message.from_user.id)]['user_articles']
     USER_DATA[str(update.message.from_user.id)] = user_data
     bot.send_message(chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", your daily update is set up")
     return ConversationHandler.END
 
 
 
-def cancel_conversation(bot, update, user_data):
+def cancel_conversation(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="I'll stop, Master " + update.message.from_user.first_name)
-    user_logger(update, "has cancelled daily info setup")
+    user_logger(update, "has cancelled the conversation")
     return ConversationHandler.END
 
 
@@ -278,6 +318,64 @@ def error_conversation(bot, update):
     return
     
 
+def start_add_article(bot, update):
+    user_logger(update, "starts add article")
+    bot.send_message(chat_id=update.message.chat_id, text="Which is the title of the article you wish to add? Or /cancel if you want") 
+    return ARTICLE
+
+
+
+def add_article(bot, update):
+    try:
+        url = urllib2.urlopen("https://en.wikipedia.org/wiki/" + update.message.text)
+    except:
+        bot.send_message(chat_id=update.message.chat_id, text="This article does not exist, Master. Could you write it again, or /cancel?")
+        return
+    
+    global USER_DATA
+    if (str(update.message.from_user.id) in USER_DATA):
+        user_data = USER_DATA[str(update.message.from_user.id)]
+        if ('user_articles' in user_data):
+            articles = user_data['user_articles']
+        else:
+            articles = []
+        articles.append(url.geturl())
+        user_data['user_articles'] = articles
+    else:
+        user_data = {'user_articles': [url.geturl()]}
+    
+    USER_DATA[str(update.message.from_user.id)] = user_data
+    bot.send_message(chat_id=update.message.chat_id, text="The article has been added, Master")
+    return ConversationHandler.END
+
+
+
+def start_remove_article(bot, update):
+    user_logger(update, "starts remove article")
+    article_list = get_article_list(str(update.message.from_user.id))
+    bot.send_message(chat_id=update.message.chat_id, text=article_list)
+    
+    if (article_list == "You have no articles in the list, Master"):
+        return ConversationHandler.END
+    
+    bot.send_message(chat_id=update.message.chat_id, text="Which is the number of the article you wish to remove? You can /cancel if you want") 
+    return ARTICLE
+
+
+
+def remove_article(bot, update):
+    articles = USER_DATA[str(update.message.from_user.id)]['user_articles']
+    num = int(update.message.text)
+    if (num >= len(articles) or num < 0):
+        bot.send_message(chat_id=update.message.chat_id, text="This number is not valid, try again or /cancel")
+        return
+    
+    del articles[num]
+    bot.send_message(chat_id=update.message.chat_id, text="Article number " + update.message.text + " has been removed, Master")
+    return ConversationHandler.END
+
+
+    
 # Inline
 def inline_search(bot, update):
     query = update.inline_query.query
@@ -316,7 +414,7 @@ def daily_info(bot, job):
 
 if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-    get_article()
+
     with open("params.conf", "r") as fh:
         WEATHER_KEY = fh.readline().strip()
         updater = Updater(fh.readline().strip())
@@ -332,9 +430,10 @@ if __name__ == "__main__":
         USER_DATA = {}
 
     for entry in USER_DATA:
-        time = datetime.time(USER_DATA[entry]['time'][0], USER_DATA[entry]['time'][1])
-        jqueue.run_daily(daily_info, time, context={'uid': entry, 'weather': USER_DATA[entry]['weather'], 'horoscope': USER_DATA[entry]['horoscope']}, name=entry)
-        print("Created daily update for " + str(entry))
+        if ('time' in entry):
+            time = datetime.time(USER_DATA[entry]['time'][0], USER_DATA[entry]['time'][1])
+            jqueue.run_daily(daily_info, time, context={'uid': entry, 'weather': USER_DATA[entry]['weather'], 'horoscope': USER_DATA[entry]['horoscope']}, name=entry)
+            print("Created daily update for " + str(entry))
 
     dispatcher.add_handler(CommandHandler('help', help))
     dispatcher.add_handler(CommandHandler('forecast', forecast))
@@ -342,7 +441,18 @@ if __name__ == "__main__":
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('search', search, pass_args=True))
     dispatcher.add_handler(CommandHandler('article', article))
+    dispatcher.add_handler(CommandHandler('myarticles', user_articles))
+    dispatcher.add_handler(ConversationHandler(
+                                                [CommandHandler('addarticle', start_add_article)],
+                                                {ARTICLE: [RegexHandler('.*', add_article)]},
+                                                []
+                                              ))
     dispatcher.add_handler(CommandHandler('dailyinfostop', stop_daily_info, pass_job_queue=True))
+    dispatcher.add_handler(ConversationHandler(
+                                                [CommandHandler('removearticle', start_remove_article)],
+                                                {ARTICLE: [RegexHandler('^\d+$', remove_article)]},
+                                                [CommandHandler('cancel', cancel_conversation), RegexHandler('.*', error_conversation)]
+                                              ))
     dispatcher.add_handler(ConversationHandler(
                                                 [CommandHandler('dailyinfostart', start_daily_info, pass_user_data=True)],
                                                 {WEATHER: [CommandHandler('skip', skip_weather, pass_user_data=True), RegexHandler('^[\w\s]+$', weather_handler, pass_user_data=True)],
@@ -351,11 +461,12 @@ if __name__ == "__main__":
                                                  TIME: [RegexHandler('^\d{1,2}$|^\d{1,2}:\d{1,2}$', schedule_handler, pass_user_data=True)],
                                                  DONE: [CommandHandler('done', set_daily_info, pass_user_data=True, pass_job_queue=True)]
                                                 },
-                                                [CommandHandler('cancel', cancel_conversation, pass_user_data=True), RegexHandler('.*', error_conversation)]
+                                                [CommandHandler('cancel', cancel_conversation), RegexHandler('.*', error_conversation)]
                                               ))
     dispatcher.add_handler(InlineQueryHandler(inline_search))
     dispatcher.add_handler(RegexHandler('.*', error))
 
+    print("Started")    
     updater.start_polling() 
     updater.idle()
     with open("user_data.txt", "w") as fh:
