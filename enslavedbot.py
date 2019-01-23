@@ -8,7 +8,7 @@ import datetime
 
 WEATHER_KEY = ""
 WEATHER_URL = 'http://api.openweathermap.org'
-WEATHER, HOROSCOPE, TIME, DONE = range(4)
+WEATHER, HOROSCOPE, ARTICLE, TIME, DONE = range(5)
 global USER_DATA
 
 def user_logger(update, message):
@@ -71,6 +71,12 @@ def get_horoscope(sign):
 
 
 
+def get_article():
+    url = urllib2.urlopen("https://en.wikipedia.org/wiki/Special:RandomInCategory/Featured_articles")
+    return url.geturl()
+
+
+
 # User-prompted commands
 def help(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="Here is what I can do for you, Master:\n" + 
@@ -112,6 +118,11 @@ def horoscope(bot, update):
         return
     
     bot.send_message(chat_id=update.message.chat_id, text=get_horoscope(USER_DATA[str(update.message.from_user.id)]['horoscope']))
+
+
+
+def article(bot, update):
+    bot.send_message(chat_id=update.message.chat_id, text=get_article())
 
 
 
@@ -176,8 +187,8 @@ def weather_handler(bot, update, user_data):
 def skip_horoscope(bot, update, user_data):
     user_data['horoscope'] = None
     bot.send_message(chat_id=update.message.chat_id, text="Of course. Let's move on, Master " + update.message.from_user.first_name + "...")
-    bot.send_message(chat_id=update.message.chat_id, text="Now, could you give me your the time to tell you this info, Master?")
-    return TIME
+    bot.send_message(chat_id=update.message.chat_id, text="Do you want me to send you random Wikipedia articles, Master? Say yes or no")
+    return ARTICLE
 
 
 
@@ -195,13 +206,21 @@ def horoscope_handler(bot, update, user_data):
     if (sign is not None):
         bot.send_message(chat_id=update.message.chat_id, text="So you are " + sign + ", Master " + update.message.from_user.first_name)
         user_data['horoscope'] = sign
-        bot.send_message(chat_id=update.message.chat_id, text="Now, could you give me your the time to tell you this info, Master?")
-        return TIME
+        bot.send_message(chat_id=update.message.chat_id, text="Do you want me to send you random Wikipedia articles, Master? Say yes or no")
+        return ARTICLE
     
     message = "I don't know this sign, Master " + update.message.from_user.first_name + ". These are the ones I know:\n"
     for sign in sunsigns:
         message += "- " + sign + "\n"
     bot.send_message(chat_id=update.message.chat_id, text=message)
+    return
+
+
+
+def article_handler(bot, update, user_data):
+    user_data['article'] = (update.message.text.lower() == "yes")
+    bot.send_message(chat_id=update.message.chat_id, text="Now, could you give me your the time to tell you this info, Master?")
+    return TIME
 
 
 
@@ -216,11 +235,18 @@ def schedule_handler(bot, update, user_data):
     user_data['time'] = (time_arr[0], time_arr[1])
     
     summary = "This is the result, Master " + update.message.from_user.first_name + ". If everything is as you want, tell me it is /done\n"
+    
     if (user_data['weather'] != (None, None, None)):
         summary += "Weather for " + user_data['weather'][0] + "," + user_data['weather'][1] + "\n"
+    
     if (user_data['horoscope'] is not None):
         summary += "Horoscope for " + user_data['horoscope'] + "\n"
+    
+    if (user_data['article']):
+        summary += "With random Wikipedia article\n"
+    
     summary += "Time of day to update: " + str(user_data['time'][0]).zfill(2) + ":" + str(user_data['time'][1]).zfill(2)
+    
     bot.send_message(chat_id=update.message.chat_id, text=summary)
     return DONE
 
@@ -230,7 +256,7 @@ def set_daily_info(bot, update, user_data, job_queue):
     global USER_DATA
     print(user_data)
     time = datetime.time(user_data['time'][0], user_data['time'][1])
-    job_queue.run_daily(daily_info, time, context={'uid': update.message.from_user.id, 'weather': user_data['weather'][2], 'horoscope': user_data['horoscope']}, name=update.message.from_user.id)
+    job_queue.run_daily(daily_info, time, context={'uid': update.message.from_user.id, 'weather': user_data['weather'][2], 'horoscope': user_data['horoscope'], 'article': user_data['article']}, name=update.message.from_user.id)
     user_data['weather'] = user_data['weather'][2]
     USER_DATA[str(update.message.from_user.id)] = user_data
     bot.send_message(chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", your daily update is set up")
@@ -242,9 +268,11 @@ def cancel_conversation(bot, update, user_data):
     bot.send_message(chat_id=update.message.chat_id, text="I'll stop, Master " + update.message.from_user.first_name)
     user_logger(update, "has cancelled daily info setup")
     return ConversationHandler.END
-    
+
+
+
 def error_conversation(bot, update):
-    print("Error, reasking")
+    print("Error, reasking", update.message.text)
     bot.send_message(chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", I didn't understand your message." + 
                                                                                                             " If you would repeat it again, or tell me to /cancel...")
     return
@@ -279,12 +307,16 @@ def daily_info(bot, job):
     # Horoscope
     if (job.context['horoscope'] is not None):
         bot.send_message(chat_id=job.context['uid'], text=get_horoscope(job.context['horoscope']))
+    
+    # Article
+    if (job.context['article']):
+        bot.send_message(chat_id=job.context['uid'], text=get_article())
 
 
 
 if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-    
+    get_article()
     with open("params.conf", "r") as fh:
         WEATHER_KEY = fh.readline().strip()
         updater = Updater(fh.readline().strip())
@@ -309,11 +341,13 @@ if __name__ == "__main__":
     dispatcher.add_handler(CommandHandler('sign', horoscope))
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('search', search, pass_args=True))
+    dispatcher.add_handler(CommandHandler('article', article))
     dispatcher.add_handler(CommandHandler('dailyinfostop', stop_daily_info, pass_job_queue=True))
     dispatcher.add_handler(ConversationHandler(
                                                 [CommandHandler('dailyinfostart', start_daily_info, pass_user_data=True)],
                                                 {WEATHER: [CommandHandler('skip', skip_weather, pass_user_data=True), RegexHandler('^[\w\s]+$', weather_handler, pass_user_data=True)],
                                                  HOROSCOPE: [CommandHandler('skip', skip_horoscope, pass_user_data=True), RegexHandler('^\w+$', horoscope_handler, pass_user_data=True)],
+                                                 ARTICLE: [RegexHandler('^[Yy]es$|^[Nn]o$', article_handler, pass_user_data=True)],
                                                  TIME: [RegexHandler('^\d{1,2}$|^\d{1,2}:\d{1,2}$', schedule_handler, pass_user_data=True)],
                                                  DONE: [CommandHandler('done', set_daily_info, pass_user_data=True, pass_job_queue=True)]
                                                 },
