@@ -133,7 +133,7 @@ def greeting(bot, update):
 
 def farewell(bot, update):
     """Answers to a farewell."""
-    send(bot, chat_id=update.message.chat_id, text="Farewell, Master " + udate.message.from_user.first_name + ".")
+    send(bot, chat_id=update.message.chat_id, text="Farewell, Master " + update.message.from_user.first_name + ".")
 
 
 
@@ -375,10 +375,12 @@ def schedule_handler(bot, update, user_data):
     if (len(time_arr) == 1): # If format is 'h', add minute value to the array
         time_arr.append(0)
     
-    # If time is not valid, repeat scheduler. Save it otherwise
+    # If time is not valid, repeat scheduler
     if (time_arr[0] < 0 or time_arr[0] > 23 or time_arr[1] < 0 or time_arr[1] > 59):
         send(bot, chat_id=update.message.chat_id, text="This is not a valid time, Master " + update.message.from_user.first_name + ". Please try again")
         return
+    
+    # Save time if correct
     user_data['time'] = (time_arr[0], time_arr[1])
     
     # Display summary of configuration
@@ -405,11 +407,17 @@ def set_daily_info(bot, update, user_data, job_queue):
     global USER_DATA
     log(user_data)
     
-    # Get the time in datetime format
-    time = datetime.time(user_data['time'][0], user_data['time'][1])
+    # Get time difference in seconds
+    time_diff_hours = int(round((update.message.date - datetime.datetime.utcnow()).total_seconds() / 3600))
+    
+    # Get the time in datetime format and in UTC
+    hour = (user_data['time'][0] + time_diff_hours) % 24
+    time = datetime.time(hour, user_data['time'][1])
+    
     
     # Add job
-    job_queue.run_daily(daily_info, time, context={'uid': update.message.from_user.id, 'weather': user_data['weather'][2], 'horoscope': user_data['horoscope'], 'article': user_data['article']}, name=update.message.from_user.id)
+    job_queue.run_daily(daily_info, time, context={'uid': update.message.from_user.id, 'weather': user_data['weather'][2], 'horoscope': user_data['horoscope'],
+                                                   'article': user_data['article']}, name=update.message.from_user.id)
     
     # Save information into USER_DATA
     user_data['weather'] = user_data['weather'][2]  # Only the city ID is needed
@@ -437,7 +445,7 @@ def error_conversation(bot, update):
     """Send an error message and repeat the current step."""
     log("Error, reasking", update.message.text)
     send(bot, chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", I didn't understand your message." + 
-                                                                                                            " If you would repeat it again, or tell me to /cancel...")
+                                                   " If you would repeat it again, or tell me to /cancel...")
     return
     
 
