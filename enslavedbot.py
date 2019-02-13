@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Needs: python-telegram-bot==11.1.0 (pip install python-telegram-bot)"""
 from telegram.ext import Updater, CommandHandler, InlineQueryHandler, ConversationHandler, MessageHandler, RegexHandler
 from telegram import InlineQueryResultArticle, InputTextMessageContent
 import logging
@@ -8,8 +9,14 @@ import datetime
 
 WEATHER_KEY = ""
 WEATHER_URL = 'http://api.openweathermap.org'
-WEATHER, HOROSCOPE, ARTICLE, TIME, DONE = range(5)
+ADMIN_ID = 0
+WEATHER, CITY, HOROSCOPE, ARTICLE, TIME, DONE = range(6)
 global USER_DATA
+
+
+def log(message):
+    m = logging.info(message)
+    
 
 
 def user_logger(update, message):
@@ -20,21 +27,29 @@ def user_logger(update, message):
         line += user.last_name + ", "
     if (user.first_name is not None):
         line += user.first_name + " "
-    print(line + "(id:" + str(user.id) + ") " + message)
+    log(line + "(id:" + str(user.id) + ") " + message)
+
+
+
+def send(bot, chat_id, text, parse_mode=None):
+    try:
+        bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+    except TelegramResponseException:
+        bot.send_message(chat_id=ADMIN_ID, message="Error: " + e.strerror)
 
 
 
 def get_weather(location_id):
     """Given a location id, get the weather info and parse it."""
     weather_json = json.loads(urllib2.urlopen(WEATHER_URL + "/data/2.5/forecast?id=" + str(location_id) + "&APPID=" + WEATHER_KEY + "&units=metric").read())
-        
-    # Filter today's data (result is a list of dictionaries
+    
+    # Filter today's data (result is a list of dictionaries)
     today = datetime.datetime.today().strftime("%Y-%m-%d")
     today_data = []
     for entry in weather_json['list']:
         if (entry['dt_txt'].split()[0] == today):
             today_data.append(entry)
-        
+
     # Calculate minimum and maximum temperatures, wind, rain and snow
     temp_min = (today_data[0]['main']['temp'], today_data[0]['dt_txt'].split()[1])
     temp_max = (today_data[0]['main']['temp'], today_data[0]['dt_txt'].split()[1])
@@ -63,14 +78,14 @@ def get_weather(location_id):
             elif ('1h' in item['snow']):
                 rain += item['snow']['1h']
         
-        # Build finished message
-        return ("**Weather in " + weather_json['city']['name'] + ", " + weather_json['city']['country'] + ":**\n" + 
-               "Near forecast: " + today_data[0]['weather'][0]['description'] + "\n" +
-               "Min temperature: " + str(temp_min[0]) + " C at ".encode('utf-8') + ":".join(temp_min[1].split(":")[:-1]) + "\n" +
-               "Max temperature: " + str(temp_max[0]) + " C at ".encode('utf-8') + ":".join(temp_max[1].split(":")[:-1]) + "\n" + 
-               "Max wind speed: " + str(wind_max[0]) + " m/s at " + ":".join(wind_max[1].split(":")[:-1]) + "\n" +
-               "Expected rain: " + str(rain) + " mm\n" + 
-               "Expected snow: " + str(snow) + " mm\n")
+    # Build finished message
+    return ("**Weather in " + weather_json['city']['name'] + ", " + weather_json['city']['country'] + ":**\n" + 
+           "Near forecast: " + today_data[0]['weather'][0]['description'] + "\n" +
+           "Min temperature: " + str(temp_min[0]) + " C at ".encode('utf-8') + ":".join(temp_min[1].split(":")[:-1]) + "\n" +
+           "Max temperature: " + str(temp_max[0]) + " C at ".encode('utf-8') + ":".join(temp_max[1].split(":")[:-1]) + "\n" + 
+           "Max wind speed: " + str(wind_max[0]) + " m/s at " + ":".join(wind_max[1].split(":")[:-1]) + "\n" +
+           "Expected rain: " + str(rain) + " mm\n" + 
+           "Expected snow: " + str(snow) + " mm\n")
 
 
 
@@ -104,32 +119,51 @@ def get_article_list(user):
 
 
 # User-prompted commands
+def thank_response(bot, update):
+    """Answer to a 'thank you'."""
+    send(bot, chat_id=update.message.chat_id, text="My pleasure, Master " + update.message.from_user.first_name)
+    
+    
+    
+def greeting(bot, update):
+    """Answers to a greeting."""
+    send(bot, chat_id=update.message.chat_id, text="Greetings, Master " + update.message.from_user.first_name + ".")
+
+
+
+def farewell(bot, update):
+    """Answers to a farewell."""
+    send(bot, chat_id=update.message.chat_id, text="Farewell, Master " + udate.message.from_user.first_name + ".")
+
+
+
 def help(bot, update):
     """Display a help message."""
-    bot.send_message(chat_id=update.message.chat_id, text="Here is what I can do for you, Master:\n" + 
+    send(bot, chat_id=update.message.chat_id, text="Here is what I can do for you, Master:\n" + 
                                                             "- /help: See this guide.\n" +
                                                             "- /search <query>: look for something in google.\n" +
                                                             "- /forecast: See the forecast for today (you need to set up a daily update).\n" +
                                                             "- /sign: See your horoscope for today (you need to set up a daily update).\n" +
+                                                            "- /article: Get a random featured Wikipedia article.\n" +
                                                             "- /myarticles: See Wikipedia articles you have saved for later.\n" +
                                                             "- /addarticle: Add a Wikipedia article to the 'read later' list.\n" +
                                                             "- /removearticle: Remove an article from the 'read later' list.\n" +
                                                             "- /dailyinfostart: Set up a daily information regarding the forecast in your location and your horoscope.\n" +
-                                                            "- /dailyinfostop: Stop the daily information service.\n")
+                                                            "- /dailyinfostop: Stop the daily information service and erase your data.\n")
 
 
 
 def start(bot, update):
     """Start the bot."""
     user_logger(update, "has started me")
-    bot.send_message(chat_id=update.message.chat_id, text="I am started now, Master. Do you need /help?")
+    send(bot, chat_id=update.message.chat_id, text="I am started now, Master. If you need /help, you can ask me?")
 
 
 
 def search(bot, update, args):
     """Search for a query in google."""
     user_logger(update, "inputs search")
-    bot.send_message(chat_id=update.message.chat_id, text=("Master " + update.message.from_user.first_name + ", I don't know how to search yet"))
+    send(bot, chat_id=update.message.chat_id, text=("Master " + update.message.from_user.first_name + ", I don't know how to search yet"))
 
 
 
@@ -140,10 +174,10 @@ def forecast(bot, update):
     """
     user_logger(update, "requests forecast info")
     if (str(update.message.from_user.id) not in USER_DATA or USER_DATA[str(update.message.from_user.id)]['weather'] is None):
-        bot.send_message(chat_id=update.message.chat_id, text="I need info on weather on the daily update to do this, Master")
+        send(bot, chat_id=update.message.chat_id, text="I need info on weather on the daily update to do this, Master")
         return
     
-    bot.send_message(chat_id=update.message.chat_id, text=get_weather(USER_DATA[str(update.message.from_user.id)]['weather']), parse_mode="Markdown")
+    send(bot, chat_id=update.message.chat_id, text=get_weather(USER_DATA[str(update.message.from_user.id)]['weather']), parse_mode="Markdown")
 
 
 
@@ -154,16 +188,17 @@ def horoscope(bot, update):
     """
     user_logger(update, "requests horoscope info")
     if (str(update.message.from_user.id) not in USER_DATA or USER_DATA[str(update.message.from_user.id)]['horoscope'] is None):
-        bot.send_message(chat_id=update.message.chat_id, text="I need your sign on the daily update to do this, Master")
+        send(bot, chat_id=update.message.chat_id, text="I need your sign on the daily update to do this, Master")
         return
     
-    bot.send_message(chat_id=update.message.chat_id, text=get_horoscope(USER_DATA[str(update.message.from_user.id)]['horoscope']))
+    send(bot, chat_id=update.message.chat_id, text=get_horoscope(USER_DATA[str(update.message.from_user.id)]['horoscope']))
 
 
 
 def article(bot, update):
     """Send a random featured Wikipedia article."""
-    bot.send_message(chat_id=update.message.chat_id, text=get_article())
+    user_logger(update, "requests random article")
+    send(bot, chat_id=update.message.chat_id, text=get_article())
 
 
 
@@ -171,7 +206,7 @@ def stop_daily_info(bot, update, job_queue):
     """Stop sending daily info to the user and delete their data."""
     global USER_DATA
     user_logger(update, "has stopped daily info")
-    bot.send_message(chat_id=update.message.chat_id, text="I will stop sending daily updates, Master " + update.message.from_user.first_name)
+    send(bot, chat_id=update.message.chat_id, text="I will stop sending daily updates, Master " + update.message.from_user.first_name)
     jobs = job_queue.jobs()
     for job in jobs:
         if (job.name == str(update.message.from_user.id)):
@@ -188,13 +223,13 @@ def user_articles(bot, update):
     """Send the list of saved articles for this user."""
     user_logger(update, "requests list of articles")
     text = get_article_list(str(update.message.from_user.id))
-    bot.send_message(chat_id=update.message.chat_id, text=text)
+    send(bot, chat_id=update.message.chat_id, text=text)
 
 
 
 def error(bot, update):
     """Capture all non-command messages."""
-    bot.send_message(chat_id=update.message.chat_id, text="I did not understand, Master. Do you need /help?")
+    send(bot, chat_id=update.message.chat_id, text="I did not understand, Master. Do you need /help?")
 
 
 
@@ -202,9 +237,9 @@ def error(bot, update):
 def start_daily_info(bot, update, user_data):
     """Start the daily_info setup."""
     user_logger(update, "has started daily info")
-    bot.send_message(chat_id=update.message.chat_id, text="I humbly request to know what I will have to say, Master " + update.message.from_user.first_name + 
+    send(bot, chat_id=update.message.chat_id, text="I humbly request to know what I will have to say, Master " + update.message.from_user.first_name + 
                                                             ". If you want to stop at any moment, you can /cancel")
-    bot.send_message(chat_id=update.message.chat_id, text="In which city do you live? (I need the full name). If you do not want me to tell you the weather, please tell me to /skip")
+    send(bot, chat_id=update.message.chat_id, text="In which city do you live? (I need the full name). If you do not want me to tell you the weather, please tell me to /skip")
     return WEATHER
 
 
@@ -212,8 +247,8 @@ def start_daily_info(bot, update, user_data):
 def skip_weather(bot, update, user_data):
     """Skip weather setup, go to horoscope."""
     user_data['weather'] = (None, None, None)
-    bot.send_message(chat_id=update.message.chat_id, text="Of course. Let's move on, Master " + update.message.from_user.first_name + "...")
-    bot.send_message(chat_id=update.message.chat_id, text="Now, could you please give me your birthsign? Or tell me to /skip")
+    send(bot, chat_id=update.message.chat_id, text="Of course. Let's move on, Master " + update.message.from_user.first_name + "...")
+    send(bot, chat_id=update.message.chat_id, text="Now, could you please give me your birthsign? Or tell me to /skip")
     return HOROSCOPE
 
 
@@ -230,31 +265,63 @@ def weather_handler(bot, update, user_data):
     # Get city and country code
     with open("city.list.json", "r") as fh:
         cities = json.load(fh)
-    for city_json in cities:
-        if (city_json['name'].lower() == city.lower()):
-            city = city_json['name']
-            country = city_json['country']
-            code = city_json['id']
-            break
+        if (city.lower() not in cities):  # If city does not exist, repeat weather
+            send(bot, chat_id=update.message.chat_id, text="I cannot find this city, Master " + update.message.from_user.first_name +
+                                                            ". I may not have it available. Could you choose a different one?")
+            return
+        
+        # Format city name to uniformize
+        city = list(city.lower())
+        city[0] = city[0].upper()
+        city = "".join(city)
+        
+        city_list = cities[city.lower()]
+        if (len(city_list) > 1):  # If some city has same name, allow choice
+            send(bot, chat_id=update.message.chat_id, text="There are various cities with this name. Could you choose which one, Master?")
+            user_data['weather'] = (city, city_list)
+            message = "Choose the number of the city you want, or /cancel to exit:\n"
+            for i in range(len(city_list)):
+                message += "\t" + str(i) + ". " + city + ", " + city_list[i]['country'] + " (" + str(city_list[i]['coord']['lat']) + "N, " + str(city_list[i]['coord']['lon']) + "E)\n"
     
-    # If city exists, save and go to horoscope
-    if (country is not None):
-        bot.send_message(chat_id=update.message.chat_id, text="Your city is " + city + ", " + country + ", Master " + update.message.from_user.first_name)
+            send(bot, chat_id=update.message.chat_id, text=message)
+            return CITY
+        
+        # If city exists, save and go to horoscope
+        country = city_list[0]['country']
+        code = city_list[0]['id']
+        
+        send(bot, chat_id=update.message.chat_id, text="Your city is " + city + ", " + country + ", Master " + update.message.from_user.first_name)
         user_data['weather'] = (city, country, code)
-        bot.send_message(chat_id=update.message.chat_id, text="Now, could you give me your birthsign? Or tell me to /skip")
+        send(bot, chat_id=update.message.chat_id, text="Now, could you give me your birthsign? Or tell me to /skip")
         return HOROSCOPE
+
+
+
+def city_handler(bot, update, user_data):
+    """
+    Choose a city from various same-named ones list.
+    """
+    city, city_list = user_data['weather']
+    num = int(update.message.text)
+    if (num >= len(city_list)):
+        send(bot, chat_id=update.message.chat_id, text="That is not one of the numbers, Master. Could you write another one?")
+        return
     
-    # If city does not exist, repeat weather
-    bot.send_message(chat_id=update.message.chat_id, text="I cannot find this city, Master " + update.message.from_user.first_name + ". Are you sure it is correctly written?")
-    return
+    country = city_list[num]['country']
+    code = city_list[num]['id']
+    
+    send(bot, chat_id=update.message.chat_id, text="Your city is " + city + ", " + country + ", Master " + update.message.from_user.first_name)
+    user_data['weather'] = (city, country, code)
+    send(bot, chat_id=update.message.chat_id, text="Now, could you give me your birthsign? Or tell me to /skip")
+    return HOROSCOPE
 
 
 
 def skip_horoscope(bot, update, user_data):
     """Skip horoscope setup, go to random article setup."""
     user_data['horoscope'] = None
-    bot.send_message(chat_id=update.message.chat_id, text="Of course. Let's move on, Master " + update.message.from_user.first_name + "...")
-    bot.send_message(chat_id=update.message.chat_id, text="Do you want me to send you random Wikipedia articles, Master? Say yes or no")
+    send(bot, chat_id=update.message.chat_id, text="Of course. Let's move on, Master " + update.message.from_user.first_name + "...")
+    send(bot, chat_id=update.message.chat_id, text="Do you want me to send you random Wikipedia articles, Master? Say yes or no")
     return ARTICLE
 
 
@@ -278,16 +345,16 @@ def horoscope_handler(bot, update, user_data):
     
     # If the sunsign is valid, save information and go to Wikipedia article
     if (sign is not None):
-        bot.send_message(chat_id=update.message.chat_id, text="So you are " + sign + ", Master " + update.message.from_user.first_name)
+        send(bot, chat_id=update.message.chat_id, text="So you are " + sign + ", Master " + update.message.from_user.first_name)
         user_data['horoscope'] = sign
-        bot.send_message(chat_id=update.message.chat_id, text="Do you want me to send you random Wikipedia articles, Master? Say yes or no")
+        send(bot, chat_id=update.message.chat_id, text="Do you want me to send you random Wikipedia articles, Master? Say yes or no")
         return ARTICLE
     
     # If the sign is not valid, display signs and repeat horoscope
     message = "I don't know this sign, Master " + update.message.from_user.first_name + ". These are the ones I know:\n"
     for sign in sunsigns:
         message += "- " + sign + "\n"
-    bot.send_message(chat_id=update.message.chat_id, text=message)
+    send(bot, chat_id=update.message.chat_id, text=message)
     return
 
 
@@ -295,7 +362,7 @@ def horoscope_handler(bot, update, user_data):
 def article_handler(bot, update, user_data):
     """Save if the user wants a random Wikipedia article or not."""
     user_data['article'] = (update.message.text.lower() == "yes")
-    bot.send_message(chat_id=update.message.chat_id, text="Now, could you give me your the time to tell you this info, Master?")
+    send(bot, chat_id=update.message.chat_id, text="Now, could you give me the time to tell you this info, Master?")
     return TIME
 
 
@@ -310,7 +377,7 @@ def schedule_handler(bot, update, user_data):
     
     # If time is not valid, repeat scheduler. Save it otherwise
     if (time_arr[0] < 0 or time_arr[0] > 23 or time_arr[1] < 0 or time_arr[1] > 59):
-        bot.send_message(chat_id=update.message.chat_id, text="This is not a valid time, Master " + update.message.from_user.first_name + ". Please try again")
+        send(bot, chat_id=update.message.chat_id, text="This is not a valid time, Master " + update.message.from_user.first_name + ". Please try again")
         return
     user_data['time'] = (time_arr[0], time_arr[1])
     
@@ -328,7 +395,7 @@ def schedule_handler(bot, update, user_data):
     
     summary += "Time of day to update: " + str(user_data['time'][0]).zfill(2) + ":" + str(user_data['time'][1]).zfill(2)
     
-    bot.send_message(chat_id=update.message.chat_id, text=summary)
+    send(bot, chat_id=update.message.chat_id, text=summary)
     return DONE
 
 
@@ -336,7 +403,7 @@ def schedule_handler(bot, update, user_data):
 def set_daily_info(bot, update, user_data, job_queue):
     """Save the conversation result and set the job up."""
     global USER_DATA
-    print(user_data)
+    log(user_data)
     
     # Get the time in datetime format
     time = datetime.time(user_data['time'][0], user_data['time'][1])
@@ -353,14 +420,14 @@ def set_daily_info(bot, update, user_data, job_queue):
     
     USER_DATA[str(update.message.from_user.id)] = user_data  # Save
     
-    bot.send_message(chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", your daily update is set up")
+    send(bot, chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", your daily update is set up")
     return ConversationHandler.END
 
 
 
 def cancel_conversation(bot, update):
     """Cancel an ongoing conversation."""
-    bot.send_message(chat_id=update.message.chat_id, text="I'll stop, Master " + update.message.from_user.first_name)
+    send(bot, chat_id=update.message.chat_id, text="I'll stop, Master " + update.message.from_user.first_name)
     user_logger(update, "has cancelled the conversation")
     return ConversationHandler.END
 
@@ -368,8 +435,8 @@ def cancel_conversation(bot, update):
 
 def error_conversation(bot, update):
     """Send an error message and repeat the current step."""
-    print("Error, reasking", update.message.text)
-    bot.send_message(chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", I didn't understand your message." + 
+    log("Error, reasking", update.message.text)
+    send(bot, chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", I didn't understand your message." + 
                                                                                                             " If you would repeat it again, or tell me to /cancel...")
     return
     
@@ -377,7 +444,7 @@ def error_conversation(bot, update):
 def start_add_article(bot, update):
     """Start the add article conversation."""
     user_logger(update, "starts add article")
-    bot.send_message(chat_id=update.message.chat_id, text="Which is the title of the article you wish to add? Or /cancel if you want") 
+    send(bot, chat_id=update.message.chat_id, text="Which is the title of the article you wish to add? Or /cancel if you want") 
     return ARTICLE
 
 
@@ -388,7 +455,7 @@ def add_article(bot, update):
     try:
         url = urllib2.urlopen("https://en.wikipedia.org/wiki/" + update.message.text)
     except:
-        bot.send_message(chat_id=update.message.chat_id, text="This article does not exist, Master. Could you write it again, or /cancel?")
+        send(bot, chat_id=update.message.chat_id, text="This article does not exist, Master. Could you write it again, or /cancel?")
         return
     
     global USER_DATA
@@ -408,7 +475,7 @@ def add_article(bot, update):
     
     USER_DATA[str(update.message.from_user.id)] = user_data  # Save data
     
-    bot.send_message(chat_id=update.message.chat_id, text="The article has been added, Master")
+    send(bot, chat_id=update.message.chat_id, text="The article has been added, Master")
     return ConversationHandler.END
 
 
@@ -419,13 +486,13 @@ def start_remove_article(bot, update):
     
     # Display article list
     article_list = get_article_list(str(update.message.from_user.id))
-    bot.send_message(chat_id=update.message.chat_id, text=article_list)
+    send(bot, chat_id=update.message.chat_id, text=article_list)
     
     # If the user has no articles, end conversation
     if (article_list == "You have no articles in the list, Master"):
         return ConversationHandler.END
     
-    bot.send_message(chat_id=update.message.chat_id, text="Which is the number of the article you wish to remove? You can /cancel if you want") 
+    send(bot, chat_id=update.message.chat_id, text="Which is the number of the article you wish to remove? You can /cancel if you want") 
     return ARTICLE
 
 
@@ -437,13 +504,13 @@ def remove_article(bot, update):
     
     # If the number is not valid, repeat step
     if (num >= len(articles) or num < 0):
-        bot.send_message(chat_id=update.message.chat_id, text="This number is not valid, try again or /cancel")
+        send(bot, chat_id=update.message.chat_id, text="This number is not valid, try again or /cancel")
         return
     
     # Remove article
     del articles[num]
     
-    bot.send_message(chat_id=update.message.chat_id, text="Article number " + update.message.text + " has been removed, Master")
+    send(bot, chat_id=update.message.chat_id, text="Article number " + update.message.text + " has been removed, Master")
     return ConversationHandler.END
 
 
@@ -454,7 +521,7 @@ def inline_search(bot, update):
     # Get query
     query = update.inline_query.query
     user = update.message.from_user
-    print(user.last_name + ", " + user.first_name + " (id:" + str(user.id) + ") is querying inline: " + query)
+    user_logger(update, "is querying inline: " + query)
     if not query:
         return
     
@@ -474,28 +541,29 @@ def inline_search(bot, update):
 # Periodic
 def daily_info(bot, job):
     """Send daily update to the user."""
-    bot.send_message(chat_id=job.context['uid'], text="Today is " + datetime.datetime.today().strftime("%d-%m-%Y"))
+    send(bot, chat_id=job.context['uid'], text="Today is " + datetime.datetime.today().strftime("%d-%m-%Y"))
     # Weather
     if (job.context['weather'] is not None):
-        bot.send_message(chat_id=job.context['uid'], text=get_weather(job.context['weather']), parse_mode="Markdown")
+        send(bot, chat_id=job.context['uid'], text=get_weather(job.context['weather']), parse_mode="Markdown")
     
     # Horoscope
     if (job.context['horoscope'] is not None):
-        bot.send_message(chat_id=job.context['uid'], text=get_horoscope(job.context['horoscope']))
+        send(bot, chat_id=job.context['uid'], text=get_horoscope(job.context['horoscope']))
     
     # Article
     if (job.context['article']):
-        bot.send_message(chat_id=job.context['uid'], text=get_article())
+        send(bot, chat_id=job.context['uid'], text=get_article())
 
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+    logging.basicConfig(format='%(asctime)s | %(levelname)s | %(message)s', level=logging.INFO)
     
     # Get config parameters
     with open("params.conf", "r") as fh:
         WEATHER_KEY = fh.readline().strip()
         updater = Updater(fh.readline().strip())
+        ADMIN_ID = int(fh.readline().strip())
     dispatcher = updater.dispatcher
     jqueue = updater.job_queue
     
@@ -510,12 +578,16 @@ if __name__ == "__main__":
     
     # Set up existing daily updates
     for entry in USER_DATA:
-        if ('time' in entry):
+        if ('time' in USER_DATA[entry]):
             time = datetime.time(USER_DATA[entry]['time'][0], USER_DATA[entry]['time'][1])
             jqueue.run_daily(daily_info, time, context={'uid': entry, 'weather': USER_DATA[entry]['weather'], 'horoscope': USER_DATA[entry]['horoscope']}, name=entry)
-            print("Created daily update for " + str(entry))
+            log("Created daily update for " + str(entry))
     
     # Add handlers
+    dispatcher.add_handler(RegexHandler('^[\w\s]+\shelp\s[\w\s]+$', help))
+    dispatcher.add_handler(RegexHandler('^[Tt]hank you$', thank_response))
+    dispatcher.add_handler(RegexHandler('[Hh]i|[Hh]ello', greeting))
+    dispatcher.add_handler(RegexHandler('[Gg]oodbye|[Bb]ye', farewell))
     dispatcher.add_handler(CommandHandler('help', help))
     dispatcher.add_handler(CommandHandler('forecast', forecast))
     dispatcher.add_handler(CommandHandler('sign', horoscope))
@@ -537,6 +609,7 @@ if __name__ == "__main__":
     dispatcher.add_handler(ConversationHandler(
                                                 [CommandHandler('dailyinfostart', start_daily_info, pass_user_data=True)],
                                                 {WEATHER: [CommandHandler('skip', skip_weather, pass_user_data=True), RegexHandler('^[\w\s]+$', weather_handler, pass_user_data=True)],
+                                                 CITY: [RegexHandler('^\d$', city_handler, pass_user_data=True)],
                                                  HOROSCOPE: [CommandHandler('skip', skip_horoscope, pass_user_data=True), RegexHandler('^\w+$', horoscope_handler, pass_user_data=True)],
                                                  ARTICLE: [RegexHandler('^[Yy]es$|^[Nn]o$', article_handler, pass_user_data=True)],
                                                  TIME: [RegexHandler('^\d{1,2}$|^\d{1,2}:\d{1,2}$', schedule_handler, pass_user_data=True)],
@@ -547,7 +620,7 @@ if __name__ == "__main__":
     dispatcher.add_handler(InlineQueryHandler(inline_search))
     dispatcher.add_handler(RegexHandler('.*', error))
 
-    print("Started")
+    log("Started")
     
     # Poll
     updater.start_polling()
@@ -556,3 +629,5 @@ if __name__ == "__main__":
     # If terminated, save user data
     with open("user_data.txt", "w") as fh:
         json.dump(USER_DATA, fh)
+    
+    log("Terminated")
