@@ -380,8 +380,12 @@ def schedule_handler(bot, update, user_data):
         send(bot, chat_id=update.message.chat_id, text="This is not a valid time, Master " + update.message.from_user.first_name + ". Please try again")
         return
     
-    # Save time if correct
-    user_data['time'] = (time_arr[0], time_arr[1])
+    # Get time difference in seconds from timezone to UTC
+    time_diff_hours = int(round((update.message.date - datetime.datetime.utcnow()).total_seconds() / 3600))
+    
+    # Save time if correct (in UTC)
+    hour = (time_arr[0] - time_diff_hours) % 24
+    user_data['time'] = (hour, time_arr[1])
     
     # Display summary of configuration
     summary = "This is the result, Master " + update.message.from_user.first_name + ". If everything is as you want, tell me it is /done\n"
@@ -395,7 +399,7 @@ def schedule_handler(bot, update, user_data):
     if (user_data['article']):
         summary += "With random Wikipedia article\n"
     
-    summary += "Time of day to update: " + str(user_data['time'][0]).zfill(2) + ":" + str(user_data['time'][1]).zfill(2)
+    summary += "Time of day to update: %s:%s (%s:%s UTC)" % (str(time_arr[0]).zfill(2), str(time_arr[1]).zfill(2), str(user_data['time'][0]).zfill(2), str(user_data['time'][1]).zfill(2))
     
     send(bot, chat_id=update.message.chat_id, text=summary)
     return DONE
@@ -407,13 +411,8 @@ def set_daily_info(bot, update, user_data, job_queue):
     global USER_DATA
     log(user_data)
     
-    # Get time difference in seconds
-    time_diff_hours = int(round((update.message.date - datetime.datetime.utcnow()).total_seconds() / 3600))
-    
-    # Get the time in datetime format and in UTC
-    hour = (user_data['time'][0] + time_diff_hours) % 24
-    time = datetime.time(hour, user_data['time'][1])
-    
+    # Get the time in datetime format for job queue
+    time = datetime.time(user_data['time'][0], user_data['time'][1])
     
     # Add job
     job_queue.run_daily(daily_info, time, context={'uid': update.message.from_user.id, 'weather': user_data['weather'][2], 'horoscope': user_data['horoscope'],
