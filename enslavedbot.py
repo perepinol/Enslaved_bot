@@ -643,7 +643,7 @@ if __name__ == "__main__":
                                                 [CommandHandler('dailyinfostart', start_daily_info, pass_user_data=True)],
                                                 {WEATHER: [CommandHandler('skip', skip_weather, pass_user_data=True), RegexHandler('^[\w\s]+$', weather_handler, pass_user_data=True)],
                                                  CITY: [RegexHandler('^\d$', city_handler, pass_user_data=True)],
-                                                 TIMEZONE: [RegexHandler('^\d{1,2}$', timezone_handler, pass_user_data=True)],
+                                                 TIMEZONE: [RegexHandler('^[+-]\d{1,2}$', timezone_handler, pass_user_data=True)],
                                                  HOROSCOPE: [CommandHandler('skip', skip_horoscope, pass_user_data=True), RegexHandler('^\w+$', horoscope_handler, pass_user_data=True)],
                                                  ARTICLE: [RegexHandler('^[Yy]es$|^[Nn]o$', article_handler, pass_user_data=True)],
                                                  TIME: [RegexHandler('^\d{1,2}$|^\d{1,2}:\d{1,2}$', schedule_handler, pass_user_data=True)],
