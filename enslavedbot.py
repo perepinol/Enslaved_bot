@@ -6,11 +6,12 @@ import logging
 import urllib2
 import json
 import datetime
+import pytz
 
 WEATHER_KEY = ""
 WEATHER_URL = 'http://api.openweathermap.org'
 ADMIN_ID = 0
-WEATHER, CITY, HOROSCOPE, ARTICLE, TIME, DONE = range(6)
+WEATHER, CITY, TIMEZONE, HOROSCOPE, ARTICLE, TIME, DONE = range(7)
 global USER_DATA
 
 
@@ -247,9 +248,9 @@ def start_daily_info(bot, update, user_data):
 def skip_weather(bot, update, user_data):
     """Skip weather setup, go to horoscope."""
     user_data['weather'] = (None, None, None)
-    send(bot, chat_id=update.message.chat_id, text="Of course. Let's move on, Master " + update.message.from_user.first_name + "...")
-    send(bot, chat_id=update.message.chat_id, text="Now, could you please give me your birthsign? Or tell me to /skip")
-    return HOROSCOPE
+    send(bot, chat_id=update.message.chat_id, text="Of course, Master " + update.message.from_user.first_name + ". Then I need to have your time zone (from -12 to +14")
+    
+    return TIMEZONE
 
 
 
@@ -286,12 +287,14 @@ def weather_handler(bot, update, user_data):
             send(bot, chat_id=update.message.chat_id, text=message)
             return CITY
         
-        # If city exists, save and go to horoscope
+        # If city exists, save
         country = city_list[0]['country']
         code = city_list[0]['id']
         
         send(bot, chat_id=update.message.chat_id, text="Your city is " + city + ", " + country + ", Master " + update.message.from_user.first_name)
         user_data['weather'] = (city, country, code)
+        
+        # Go to horoscope
         send(bot, chat_id=update.message.chat_id, text="Now, could you give me your birthsign? Or tell me to /skip")
         return HOROSCOPE
 
@@ -313,6 +316,19 @@ def city_handler(bot, update, user_data):
     send(bot, chat_id=update.message.chat_id, text="Your city is " + city + ", " + country + ", Master " + update.message.from_user.first_name)
     user_data['weather'] = (city, country, code)
     send(bot, chat_id=update.message.chat_id, text="Now, could you give me your birthsign? Or tell me to /skip")
+    return HOROSCOPE
+
+
+
+def timezone_handler(bot, update, user_data):
+    """Choose a timezone if a location has not been chosen."""
+    offset = int(update.message.text)
+    if (offset < -12 or offset > 14):
+        send(bot, chat_id=update.message.chat_id, text="Master, this is not an existing timezone. Could you write it again?")
+        return TIMEZONE
+    
+    user_data['timezone'] = offset
+    send(bot, chat_id=update.message.chat_id, text="Now, could you please give me your birthsign? Or tell me to /skip")
     return HOROSCOPE
 
 
@@ -380,17 +396,24 @@ def schedule_handler(bot, update, user_data):
         send(bot, chat_id=update.message.chat_id, text="This is not a valid time, Master " + update.message.from_user.first_name + ". Please try again")
         return
     
-    # Get time difference in seconds from timezone to UTC
-    time_diff_hours = int(round((update.message.date - datetime.datetime.utcnow()).total_seconds() / 3600))
+    # Get time offset
+    if ('timezone' in user_data):
+        offset = -timezone
+    else:
+        timezone = pytz.timezone(pytz.country_timezones(user_data['weather'][1])[0])
+        utc_time = pytz.utc.localize(datetime.datetime.utcnow())
+        rel_time = utc_time.astimezone(timezone).replace(tzinfo=None)
+        
+        offset = int((utc_time.replace(tzinfo=None) - rel_time).total_seconds()) / 3600
     
     # Save time if correct (in UTC)
-    hour = (time_arr[0] - time_diff_hours) % 24
+    hour = (time_arr[0] + offset) % 24
     user_data['time'] = (hour, time_arr[1])
     
     # Display summary of configuration
     summary = "This is the result, Master " + update.message.from_user.first_name + ". If everything is as you want, tell me it is /done\n"
     
-    if (user_data['weather'] != (None, None, None)):
+    if (user_data['weather'][0] is not None):
         summary += "Weather for " + user_data['weather'][0] + "," + user_data['weather'][1] + "\n"
     
     if (user_data['horoscope'] is not None):
@@ -617,6 +640,7 @@ if __name__ == "__main__":
                                                 [CommandHandler('dailyinfostart', start_daily_info, pass_user_data=True)],
                                                 {WEATHER: [CommandHandler('skip', skip_weather, pass_user_data=True), RegexHandler('^[\w\s]+$', weather_handler, pass_user_data=True)],
                                                  CITY: [RegexHandler('^\d$', city_handler, pass_user_data=True)],
+                                                 TIMEZONE: [RegexHandler('^\d{1,2}$', timezone_handler)],
                                                  HOROSCOPE: [CommandHandler('skip', skip_horoscope, pass_user_data=True), RegexHandler('^\w+$', horoscope_handler, pass_user_data=True)],
                                                  ARTICLE: [RegexHandler('^[Yy]es$|^[Nn]o$', article_handler, pass_user_data=True)],
                                                  TIME: [RegexHandler('^\d{1,2}$|^\d{1,2}:\d{1,2}$', schedule_handler, pass_user_data=True)],
