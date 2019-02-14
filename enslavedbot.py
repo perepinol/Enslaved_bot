@@ -50,7 +50,11 @@ def get_weather(location_id):
     for entry in weather_json['list']:
         if (entry['dt_txt'].split()[0] == today):
             today_data.append(entry)
-
+    
+    # Check if there is data
+    if (len(today_data) == 0):
+        return "There is no available weather data until tomorrow, Master"
+    
     # Calculate minimum and maximum temperatures, wind, rain and snow
     temp_min = (today_data[0]['main']['temp'], today_data[0]['dt_txt'].split()[1])
     temp_max = (today_data[0]['main']['temp'], today_data[0]['dt_txt'].split()[1])
