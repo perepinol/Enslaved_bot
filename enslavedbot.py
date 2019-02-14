@@ -264,6 +264,8 @@ def weather_handler(bot, update, user_data):
     code = None
     
     # Get city and country code
+    send(bot, chat_id=update.message.chat_id, text="Please give me some time to search for this city, Master")
+    
     with open("city.list.json", "r") as fh:
         cities = json.load(fh)
         if (city.lower() not in cities):  # If city does not exist, repeat weather
@@ -398,13 +400,14 @@ def schedule_handler(bot, update, user_data):
     
     # Get time offset
     if ('timezone' in user_data):
-        offset = -timezone
+        offset = -user_data['timezone']
     else:
         timezone = pytz.timezone(pytz.country_timezones(user_data['weather'][1])[0])
         utc_time = pytz.utc.localize(datetime.datetime.utcnow())
         rel_time = utc_time.astimezone(timezone).replace(tzinfo=None)
         
         offset = int((utc_time.replace(tzinfo=None) - rel_time).total_seconds()) / 3600
+        user_data['timezone'] = -offset  # May be interesting to keep this
     
     # Save time if correct (in UTC)
     hour = (time_arr[0] + offset) % 24
@@ -465,7 +468,7 @@ def cancel_conversation(bot, update):
 
 def error_conversation(bot, update):
     """Send an error message and repeat the current step."""
-    log("Error, reasking", update.message.text)
+    log("Error, reasking (got '" + update.message.text + "')")
     send(bot, chat_id=update.message.chat_id, text="Master " + update.message.from_user.first_name + ", I didn't understand your message." + 
                                                    " If you would repeat it again, or tell me to /cancel...")
     return
@@ -640,7 +643,7 @@ if __name__ == "__main__":
                                                 [CommandHandler('dailyinfostart', start_daily_info, pass_user_data=True)],
                                                 {WEATHER: [CommandHandler('skip', skip_weather, pass_user_data=True), RegexHandler('^[\w\s]+$', weather_handler, pass_user_data=True)],
                                                  CITY: [RegexHandler('^\d$', city_handler, pass_user_data=True)],
-                                                 TIMEZONE: [RegexHandler('^\d{1,2}$', timezone_handler)],
+                                                 TIMEZONE: [RegexHandler('^\d{1,2}$', timezone_handler, pass_user_data=True)],
                                                  HOROSCOPE: [CommandHandler('skip', skip_horoscope, pass_user_data=True), RegexHandler('^\w+$', horoscope_handler, pass_user_data=True)],
                                                  ARTICLE: [RegexHandler('^[Yy]es$|^[Nn]o$', article_handler, pass_user_data=True)],
                                                  TIME: [RegexHandler('^\d{1,2}$|^\d{1,2}:\d{1,2}$', schedule_handler, pass_user_data=True)],
