@@ -146,15 +146,16 @@ def help(bot, update):
     """Display a help message."""
     send(bot, chat_id=update.message.chat_id, text="Here is what I can do for you, Master:\n" + 
                                                             "- /help: See this guide.\n" +
-                                                            "- /search <query>: look for something in google.\n" +
-                                                            "- /forecast: See the forecast for today (you need to set up a daily update).\n" +
-                                                            "- /sign: See your horoscope for today (you need to set up a daily update).\n" +
+                                                            "- /forecast: See the forecast for today (you need to set up a daily report).\n" +
+                                                            "- /sign: See your horoscope for today (you need to set up a daily report).\n" +
                                                             "- /article: Get a random featured Wikipedia article.\n" +
                                                             "- /myarticles: See Wikipedia articles you have saved for later.\n" +
                                                             "- /addarticle: Add a Wikipedia article to the 'read later' list.\n" +
                                                             "- /removearticle: Remove an article from the 'read later' list.\n" +
-                                                            "- /dailyinfostart: Set up a daily information regarding the forecast in your location and your horoscope.\n" +
-                                                            "- /dailyinfostop: Stop the daily information service and erase your data.\n")
+                                                            "- /dailyinfostart: Set up a daily report (weather, horoscope and random wikipedia articles).\n" +
+                                                            "- /dailyinfostop: Stop the daily report service and erase your data.\n"
+                                                            "\n I can also look for things in google while you are in other chats. Simply write \"@enlsavedbot <query>\"" +
+                                                            " and I will show you the top results")
 
 
 
@@ -481,7 +482,7 @@ def error_conversation(bot, update):
 def start_add_article(bot, update):
     """Start the add article conversation."""
     user_logger(update, "starts add article")
-    send(bot, chat_id=update.message.chat_id, text="Which is the title of the article you wish to add? Or /cancel if you want") 
+    send(bot, chat_id=update.message.chat_id, text="Which is the link of the article you wish to add? (You can look for it with the Wikipedia bot @wiki) Or /cancel if you want") 
     return ARTICLE
 
 
@@ -490,7 +491,7 @@ def add_article(bot, update):
     """Add an article to the user's list."""
     # If the url exists, get it. If not, repeat step
     try:
-        url = urllib2.urlopen("https://en.wikipedia.org/wiki/" + update.message.text)
+        url = urllib2.urlopen(update.message.text)
     except:
         send(bot, chat_id=update.message.chat_id, text="This article does not exist, Master. Could you write it again, or /cancel?")
         return
@@ -554,20 +555,19 @@ def remove_article(bot, update):
     
 # Inline
 def inline_search(bot, update):
-    """Search google via inline input."""
+    """Kept to implement something inline maybe."""
     # Get query
     query = update.inline_query.query
-    user = update.message.from_user
-    user_logger(update, "is querying inline: " + query)
+    
     if not query:
         return
     
-    # Search in google
+    # Fill query results
     results = list()
     results.append(InlineQueryResultArticle(
         id=query,
-        title=query.upper(),
-        input_message_content=InputTextMessageContent(query.upper())
+        title=None,
+        input_message_content=None
     ))
     
     # Update inline response
@@ -617,7 +617,11 @@ if __name__ == "__main__":
     for entry in USER_DATA:
         if ('time' in USER_DATA[entry]):
             time = datetime.time(USER_DATA[entry]['time'][0], USER_DATA[entry]['time'][1])
-            jqueue.run_daily(daily_info, time, context={'uid': entry, 'weather': USER_DATA[entry]['weather'], 'horoscope': USER_DATA[entry]['horoscope']}, name=entry)
+            jqueue.run_daily(daily_info, time, context={'uid': entry,
+                                                        'weather': USER_DATA[entry]['weather'],
+                                                        'horoscope': USER_DATA[entry]['horoscope'],
+                                                        'article': USER_DATA[entry]['article']},
+                             name=entry)
             log("Created daily update for " + str(entry))
     
     # Add handlers
@@ -655,7 +659,7 @@ if __name__ == "__main__":
                                                 },
                                                 [CommandHandler('cancel', cancel_conversation), RegexHandler('.*', error_conversation)]
                                               ))
-    dispatcher.add_handler(InlineQueryHandler(inline_search))
+    # dispatcher.add_handler(InlineQueryHandler(inline_search))
     dispatcher.add_handler(RegexHandler('.*', error))
 
     log("Started")
