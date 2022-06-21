@@ -7,7 +7,7 @@ future==0.17.1
 idna==2.8
 importlib-resources==1.0.2
 ipaddress==1.0.22
-numpy==1.16.1
+numpy==1.22.0
 pathlib2==2.3.3
 pkg-resources==0.0.0
 pycparser==2.19
